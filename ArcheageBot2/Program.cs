@@ -48,29 +48,68 @@ namespace ArcheageBot2
 
             IntPtr hWnd = FindWindowStartingWithTitle(windowTitleStart);
 
-            IpcChannel channel = new IpcChannel(windowTitleStart);
-            ChannelServices.RegisterChannel(channel, false);
-            RemotingConfiguration.RegisterWellKnownServiceType(
-                typeof(RemoteServer),
-                windowTitleStart,
-                WellKnownObjectMode.Singleton);
+            Int32 targetPID = 0;
+            string targetExe = null;
+
+            // Will contain the name of the IPC server channel
+            string channelName = null;
+
+            // Create the IPC server using the FileMonitorIPC.ServiceInterface class as a singleton
+            EasyHook.RemoteHooking.IpcCreateServer<ArcheageLibrary.ServerInterface>(ref channelName, System.Runtime.Remoting.WellKnownObjectMode.Singleton);
 
 
             uint processId;
             GetWindowThreadProcessId(hWnd, out processId);
-            Process gameProcess = Process.GetProcessById((int)processId);
+            targetPID = (int)processId;
+            
 
-            // Inject the remote server into the game client
-            string injectionLibraryPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "ArcheageLibrary.dll");
+
+            // Get the full path to the assembly we want to inject into the target process
+            string injectionLibrary = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "ArcheageLibrary.dll");
+
             try
             {
-                RemoteHooking.Inject(gameProcess.Id, injectionLibraryPath, null);
+                // Injecting into existing process by Id
+                if (processId > 0)
+                {
+                    Console.WriteLine("Attempting to inject into process {0}", targetPID);
+
+                    // inject into existing process
+                    EasyHook.RemoteHooking.Inject(
+                        targetPID,          // ID of process to inject into
+                        injectionLibrary,   // 32-bit library to inject (if target is 32-bit)
+                        injectionLibrary,   // 64-bit library to inject (if target is 64-bit)
+                        channelName         // the parameters to pass into injected library
+                                            // ...
+                    );
+                }
+                // Create a new process and then inject into it
+                else if (!string.IsNullOrEmpty(targetExe))
+                {
+                    Console.WriteLine("Attempting to create and inject into {0}", targetExe);
+                    // start and inject into a new process
+                    EasyHook.RemoteHooking.CreateAndInject(
+                        targetExe,          // executable to run
+                        "",                 // command line arguments for target
+                        0,                  // additional process creation flags to pass to CreateProcess
+                        EasyHook.InjectionOptions.DoNotRequireStrongName, // allow injectionLibrary to be unsigned
+                        injectionLibrary,   // 32-bit library to inject (if target is 32-bit)
+                        injectionLibrary,   // 64-bit library to inject (if target is 64-bit)
+                        out targetPID,      // retrieve the newly created process ID
+                        channelName         // the parameters to pass into injected library
+                                            // ...
+                    );
+                }
             }
-            catch (Exception e) {
-                Console.WriteLine(e.Message);
+            catch (Exception e)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("There was an error while injecting into target:");
+                Console.ResetColor();
+                Console.WriteLine(e.ToString());
             }
 
-            Console.WriteLine("Remote server injected into game client!");
+
         }
 
 

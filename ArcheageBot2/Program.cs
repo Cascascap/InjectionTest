@@ -41,7 +41,8 @@ namespace ArcheageBot2
 
             string windowTitleStart = "- ArcheAge DX11";
             //windowTitleStart = "*new 7 - Notepad++";
-            windowTitleStart = "#bots |";
+            //windowTitleStart = "#bots |";
+
             /*
             Dictionary<IntPtr, string> handlesAndTitles = GetAllWindowHandlesAndTitles();
             foreach (var item in handlesAndTitles)

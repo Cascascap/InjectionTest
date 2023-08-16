@@ -26,6 +26,65 @@ namespace ArcheageLibrary
         [DllImport("user32.dll")]
         static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        public class WindowInfo
+        {
+            public int ProcessId;
+            public List<IntPtr> Handles = new List<IntPtr>();
+        }
+
+        public static bool EnumWindowsCallback(IntPtr hWnd, IntPtr lParam)
+        {
+            GCHandle gch = (GCHandle)lParam;
+            WindowInfo info = (WindowInfo)gch.Target;
+
+            uint windowProcessId;
+            GetWindowThreadProcessId(hWnd, out windowProcessId);
+            if (windowProcessId == info.ProcessId)
+            {
+                info.Handles.Add(hWnd);
+            }
+            return true;
+        }
+
+        public static List<IntPtr> GetWindowsByProcessId(int processId)
+        {
+            WindowInfo info = new WindowInfo { ProcessId = processId };
+            GCHandle gch = GCHandle.Alloc(info);
+            try
+            {
+                EnumWindows(EnumWindowsCallback, (IntPtr)gch);
+            }
+            finally
+            {
+                gch.Free();
+            }
+            return info.Handles;
+        }
+
+
+
+        public static bool EnumWindowsCallback(IntPtr hWnd, ref WindowInfo info)
+        {
+            uint windowProcessId;
+            GetWindowThreadProcessId(hWnd, out windowProcessId);
+            if (windowProcessId == info.ProcessId)
+            {
+                info.Handles.Add(hWnd);
+            }
+            return true;
+        }
         struct INPUT
         {
             public uint Type;
@@ -48,18 +107,31 @@ namespace ArcheageLibrary
             public IntPtr ExtraInfo;
         }
 
-        private void PressKey(ushort key)
+        private void PressKey(ushort key, int processId)
         {
             INPUT[] inputs = new INPUT[2];
             inputs[0].Type = 1; // Keyboard input
             inputs[0].Data.Keyboard.Vk = key;
+            inputs[0].Data.Keyboard.Scan = 0;
+            inputs[0].Data.Keyboard.Time = 0;
             inputs[0].Data.Keyboard.Flags = 0; // Keydown
 
             inputs[1].Type = 1; // Keyboard input
             inputs[1].Data.Keyboard.Vk = key;
+            inputs[0].Data.Keyboard.Scan = 0;
+            inputs[0].Data.Keyboard.Time = 0;
             inputs[1].Data.Keyboard.Flags = 2; // Keyup
 
-            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            uint result = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            if (result < inputs.Length)
+            {
+                _server.ReportMessage(processId, "Result: " + result);
+                int errorCode = Marshal.GetLastWin32Error();
+                if(errorCode != 0)
+                {
+                    _server.ReportMessage(processId, "Error: " + errorCode.ToString());
+                }
+            }
         }
 
         /// <summary>
@@ -95,7 +167,6 @@ namespace ArcheageLibrary
             // Injection is now complete and the server interface is connected
             int processId = EasyHook.RemoteHooking.GetCurrentProcessId();
             _server.IsInstalled(processId);
-
             // Install hooks
             _server.ReportMessage(processId, "Hooking...");
             // CreateFile https://msdn.microsoft.com/en-us/library/windows/desktop/aa363858(v=vs.85).aspx
@@ -103,29 +174,32 @@ namespace ArcheageLibrary
                 EasyHook.LocalHook.GetProcAddress("kernel32.dll", "CreateFileW"),
                 new CreateFile_Delegate(CreateFile_Hook),
                 this);
-
+            /*
             // ReadFile https://msdn.microsoft.com/en-us/library/windows/desktop/aa365467(v=vs.85).aspx
             var readFileHook = EasyHook.LocalHook.Create(
-                EasyHook.LocalHook.GetProcAddress("kernel32.dll", "ReadFile"),
+                EasyHook.LocalHook.GetProcAddress("kernel32.dll", "ReadFileW"),
                 new ReadFile_Delegate(ReadFile_Hook),
                 this);
 
+            /*
             // WriteFile https://msdn.microsoft.com/en-us/library/windows/desktop/aa365747(v=vs.85).aspx
             var writeFileHook = EasyHook.LocalHook.Create(
                 EasyHook.LocalHook.GetProcAddress("kernel32.dll", "WriteFile"),
                 new WriteFile_Delegate(WriteFile_Hook),
                 this);
-
+            */
             // Activate hooks on all threads except the current thread
             createFileHook.ThreadACL.SetExclusiveACL(new Int32[] { 0 });
-            readFileHook.ThreadACL.SetExclusiveACL(new Int32[] { 0 });
-            writeFileHook.ThreadACL.SetExclusiveACL(new Int32[] { 0 });
-
+           
+            //readFileHook.ThreadACL.SetExclusiveACL(new Int32[] { 0 });
+            /*
+           writeFileHook.ThreadACL.SetExclusiveACL(new Int32[] { 0 });
+           */
             _server.ReportMessage(processId, "CreateFile, ReadFile and WriteFile hooks installed");
 
             // Wake up the process (required if using RemoteHooking.CreateAndInject)
-            _server.ReportMessage(processId, "Waking up...");
-            EasyHook.RemoteHooking.WakeUpProcess();
+            //_server.ReportMessage(processId, "Waking up...");
+            //EasyHook.RemoteHooking.WakeUpProcess();
 
             try
             {
@@ -135,10 +209,20 @@ namespace ArcheageLibrary
                 {
 
                     string[] queued = null;
-                    PressKey(0x49); // Virtual key code for "I"
-                    PressKey(0x0D); 
+                    System.Threading.Thread.Sleep(5000);
+
+                    const uint WM_KEYDOWN = 0x0100;
+                    const int VK_I = 0x49;
+
+                    List<IntPtr> windowHandles = GetWindowsByProcessId(processId);
+                    foreach (IntPtr hWnd in windowHandles)
+                    {
+                        PostMessage(hWnd, WM_KEYDOWN, (IntPtr)VK_I, IntPtr.Zero);
+                    }
+
+                    //PressKey(0x49, processId); // Virtual key code for "I"
+                    //PressKey(0x0D); 
                     _server.ReportMessage(processId, "Sending Key...");
-                    System.Threading.Thread.Sleep(50000);
                     lock (_messageQueue)
                     {
                         queued = _messageQueue.ToArray();
@@ -163,8 +247,8 @@ namespace ArcheageLibrary
 
             // Remove hooks
             createFileHook.Dispose();
-            readFileHook.Dispose();
-            writeFileHook.Dispose();
+            //readFileHook.Dispose();
+            //writeFileHook.Dispose();
 
             // Finalise cleanup of hooks
             EasyHook.LocalHook.Release();
@@ -305,7 +389,7 @@ namespace ArcheageLibrary
 
         #endregion
 
-        #region ReadFile Hook
+        #region ReadFileW Hook
 
         /// <summary>
         /// The ReadFile delegate, this is needed to create a delegate of our hook function <see cref="ReadFile_Hook(IntPtr, IntPtr, uint, out uint, IntPtr)"/>.
@@ -334,7 +418,7 @@ namespace ArcheageLibrary
         /// <param name="lpOverlapped"></param>
         /// <returns></returns>
         [DllImport("kernel32.dll", SetLastError = true, CallingConvention = CallingConvention.StdCall)]
-        static extern bool ReadFile(
+        static extern bool ReadFileW(
             IntPtr hFile,
             IntPtr lpBuffer,
             uint nNumberOfBytesToRead,
@@ -361,7 +445,7 @@ namespace ArcheageLibrary
             lpNumberOfBytesRead = 0;
 
             // Call original first so we have a value for lpNumberOfBytesRead
-            result = ReadFile(hFile, lpBuffer, nNumberOfBytesToRead, out lpNumberOfBytesRead, lpOverlapped);
+            result = ReadFileW(hFile, lpBuffer, nNumberOfBytesToRead, out lpNumberOfBytesRead, lpOverlapped);
 
             try
             {

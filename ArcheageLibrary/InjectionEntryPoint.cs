@@ -23,6 +23,45 @@ namespace ArcheageLibrary
         /// </summary>
         Queue<string> _messageQueue = new Queue<string>();
 
+        [DllImport("user32.dll")]
+        static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        struct INPUT
+        {
+            public uint Type;
+            public MOUSEKEYBDHARDWAREINPUT Data;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        struct MOUSEKEYBDHARDWAREINPUT
+        {
+            [FieldOffset(0)]
+            public KEYBDINPUT Keyboard;
+        }
+
+        struct KEYBDINPUT
+        {
+            public ushort Vk;
+            public ushort Scan;
+            public uint Flags;
+            public uint Time;
+            public IntPtr ExtraInfo;
+        }
+
+        private void PressKey(ushort key)
+        {
+            INPUT[] inputs = new INPUT[2];
+            inputs[0].Type = 1; // Keyboard input
+            inputs[0].Data.Keyboard.Vk = key;
+            inputs[0].Data.Keyboard.Flags = 0; // Keydown
+
+            inputs[1].Type = 1; // Keyboard input
+            inputs[1].Data.Keyboard.Vk = key;
+            inputs[1].Data.Keyboard.Flags = 2; // Keyup
+
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
         /// <summary>
         /// EasyHook requires a constructor that matches <paramref name="context"/> and any additional parameters as provided
         /// in the original call to <see cref="EasyHook.RemoteHooking.Inject(int, EasyHook.InjectionOptions, string, string, object[])"/>.
@@ -58,7 +97,7 @@ namespace ArcheageLibrary
             _server.IsInstalled(processId);
 
             // Install hooks
-
+            _server.ReportMessage(processId, "Hooking...");
             // CreateFile https://msdn.microsoft.com/en-us/library/windows/desktop/aa363858(v=vs.85).aspx
             var createFileHook = EasyHook.LocalHook.Create(
                 EasyHook.LocalHook.GetProcAddress("kernel32.dll", "CreateFileW"),
@@ -85,17 +124,21 @@ namespace ArcheageLibrary
             _server.ReportMessage(processId, "CreateFile, ReadFile and WriteFile hooks installed");
 
             // Wake up the process (required if using RemoteHooking.CreateAndInject)
+            _server.ReportMessage(processId, "Waking up...");
             EasyHook.RemoteHooking.WakeUpProcess();
 
             try
             {
+                _server.ReportMessage(processId, "Starting Loop...");
                 // Loop until FileMonitor closes (i.e. IPC fails)
                 while (true)
                 {
-                    System.Threading.Thread.Sleep(500);
 
                     string[] queued = null;
-
+                    PressKey(0x49); // Virtual key code for "I"
+                    PressKey(0x0D); 
+                    _server.ReportMessage(processId, "Sending Key...");
+                    System.Threading.Thread.Sleep(50000);
                     lock (_messageQueue)
                     {
                         queued = _messageQueue.ToArray();
@@ -126,6 +169,8 @@ namespace ArcheageLibrary
             // Finalise cleanup of hooks
             EasyHook.LocalHook.Release();
         }
+
+
 
         /// <summary>
         /// P/Invoke to determine the filename from a file handle

@@ -11,12 +11,16 @@ using System.Runtime.Remoting.Channels.Ipc;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using static ArcheageBot2.GameHook;
 
 namespace ArcheageBot2
 {
     static class Program
     {
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+        public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
         [DllImport("user32.dll", SetLastError = true)]
         static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, IntPtr szTitle);
 
@@ -34,10 +38,10 @@ namespace ArcheageBot2
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            //Application.Run(new Form1());
-            GameHook.Start();
 
             string windowTitleStart = "- ArcheAge DX11";
+            //windowTitleStart = "*new 7 - Notepad++";
+            windowTitleStart = "#bots |";
             /*
             Dictionary<IntPtr, string> handlesAndTitles = GetAllWindowHandlesAndTitles();
             foreach (var item in handlesAndTitles)
@@ -45,7 +49,6 @@ namespace ArcheageBot2
                 Console.WriteLine($"Handle: {item.Key}, Title: {item.Value}");
             }
             */
-
             IntPtr hWnd = FindWindowStartingWithTitle(windowTitleStart);
 
             Int32 targetPID = 0;
@@ -109,7 +112,7 @@ namespace ArcheageBot2
                 Console.WriteLine(e.ToString());
             }
 
-
+           Application.Run(new Form1());
         }
 
 

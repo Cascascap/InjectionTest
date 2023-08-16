@@ -25,13 +25,13 @@ namespace ArcheageLibrary
         {
             for (int i = 0; i < messages.Length; i++)
             {
-                Console.WriteLine(messages[i]);
+                System.Diagnostics.Debug.WriteLine(messages[i]);
             }
         }
 
         public void ReportMessage(int clientPID, string message)
         {
-            Console.WriteLine(message);
+            System.Diagnostics.Debug.WriteLine(message);
         }
 
         /// <summary>
@@ -40,7 +40,7 @@ namespace ArcheageLibrary
         /// <param name="e"></param>
         public void ReportException(Exception e)
         {
-            Console.WriteLine("The target process has reported an error:\r\n" + e.ToString());
+            System.Diagnostics.Debug.WriteLine("The target process has reported an error:\r\n" + e.ToString());
         }
 
         /// <summary>
